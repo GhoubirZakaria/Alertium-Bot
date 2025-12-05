@@ -13,9 +13,6 @@ FORBIDDEN_COMBOS = [
     {"🇳", "I", "G"},
     {"🇳", "I", "G", "🇬", "E", "R"},
     {"🇳", "I", "G", "🇬", "A"},
-    {":regional_indicator_n:", ":regional_indicator_i:", ":regional_indicator_g:", ":regional_indicator_g:", ":regional_indicator_e:", ":regional_indicator_r:"},
-    {":regional_indicator_n:", ":regional_indicator_i:", ":regional_indicator_g:"},
-    {":regional_indicator_n:", ":regional_indicator_i:", ":regional_indicator_g:", ":regional_indicator_g:", ":regional_indicator_a:"},
     {"😡", "🤬"}
 ]
 

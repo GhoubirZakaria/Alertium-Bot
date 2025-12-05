@@ -5,30 +5,6 @@ import aiohttp
 import json
 import os
 
-# ------------------------------------------------------------
-from datetime import timedelta, datetime
-
-# Forbidden combinations of emoji reactions
-FORBIDDEN_COMBOS = [
-    {"🇳", "I", "G"},
-    {"🇳", "I", "G", "🇬", "E", "R"},
-    {"🇳", "I", "G", "🇬", "A"},
-    {"😡", "🤬"}
-]
-
-# Timeout escalation in minutes
-OFFENSE_TIMEOUTS = [1, 5, 15, 60]  # 1 min → 5 min → 15 min → 1 hour
-
-# Track offense count per user
-offense_counts: dict[int, int] = {}
-
-# Track user reactions on each message
-# Key: (message_id, user_id) → Set of emojis
-reactions_on_message: dict[tuple[int, int], set[str]] = {}
-last_punished_at: dict[int, datetime] = {}
-
-
-
 # ============================================================
 # CONFIGURATION
 # ============================================================
@@ -42,9 +18,6 @@ TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID")
 TWITCH_APP_ACCESS_TOKEN = os.getenv("TWITCH_ACCESS_TOKEN")
 
 ALERT_ROLE_ID = os.getenv("ALERT_ROLE_ID")
-
-LOG_CHANNEL_ID_ENV = os.getenv("LOG_CHANNEL_ID")
-LOG_CHANNEL_ID = int(LOG_CHANNEL_ID_ENV) if LOG_CHANNEL_ID_ENV else None
 
 SNAPSHOT_FILE = "badges_snapshot.json"
 
@@ -90,39 +63,6 @@ def save_snapshot(ids: set[str]) -> None:
             json.dump(payload, f, indent=2)
     except Exception:
         pass
-#---------------------logging to log channel----------------------
-
-async def log_timeout_action(
-    guild: discord.Guild,
-    member: discord.Member,
-    minutes: int,
-    count: int,
-    combo: set[str],
-    channel_id: int,
-    message_id: int,
-):
-    """Send a log entry to the log channel, if configured."""
-    if LOG_CHANNEL_ID is None:
-        return
-
-    log_channel = guild.get_channel(LOG_CHANNEL_ID)
-    if log_channel is None:
-        return
-
-    jump_url = f"https://discord.com/channels/{guild.id}/{channel_id}/{message_id}"
-
-    embed = Embed(
-        title="Alertium – Forbidden Reaction combo Timeout",
-        description="A user has been timed out for a forbidden emoji combo.",
-        color=0xFF5555,
-    )
-    embed.add_field(name="User", value=f"{member} (`{member.id}`)", inline=False)
-    embed.add_field(name="Duration", value=f"{minutes} minute(s)", inline=True)
-    embed.add_field(name="Offense Count", value=str(count), inline=True)
-    embed.add_field(name="Emoji Combo", value=", ".join(combo), inline=False)
-    embed.add_field(name="Message", value=f"[Jump to message]({jump_url})", inline=False)
-
-    await log_channel.send(embed=embed)
 
 
 # ============================================================
@@ -289,165 +229,28 @@ async def before_loop():
 # REACTION ROLE HANDLERS
 # ============================================================
 
-# @bot.event
-# (payload: discord.RawReactionActionEvent):
-#     """Give the alert role when a user reacts with ✅ on the opt-in message."""
-#     # Ignore bot's own reactions
-#     if payload.user_id == bot.user.id:
-#         return
-
-#     if str(payload.emoji) != "✅":
-#         return
-
-#     if not ALERT_ROLE_ID:
-#         return
-
-#     guild = bot.get_guild(payload.guild_id)
-#     if guild is None:
-#         return
-
-#     role = guild.get_role(int(ALERT_ROLE_ID))
-#     if role is None:
-#         return
-
-#     # Fetch the member
-#     member = guild.get_member(payload.user_id)
-#     if member is None:
-#         try:
-#             member = await guild.fetch_member(payload.user_id)
-#         except discord.NotFound:
-#             return
-
-#     # Fetch the message to ensure it's one of our opt-in messages
-#     channel = guild.get_channel(payload.channel_id)
-#     if channel is None:
-#         return
-
-#     try:
-#         message = await channel.fetch_message(payload.message_id)
-#     except discord.NotFound:
-#         return
-
-#     # Only react to messages sent by this bot and (optionally) with the opt-in title
-#     if message.author.id != bot.user.id:
-#         return
-
-#     # Optional: check embed title to be extra safe
-#     if message.embeds:
-#         if message.embeds[0].title != "Alertium Notifications Opt-in":
-#             return
-
-#     # Finally, add the role if the user doesn't have it
-#     if role not in member.roles:
-#         await member.add_roles(role, reason="Opted into Alertium notifications via reaction")
-
-
-# ============================================================
-# REACTION HANDLER: moderation + opt-in role
-# ============================================================
-
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    """Handle reaction-based moderation and the opt-in alert role."""
-
+    """Give the alert role when a user reacts with ✅ on the opt-in message."""
     # Ignore bot's own reactions
     if payload.user_id == bot.user.id:
+        return
+
+    if str(payload.emoji) != "✅":
+        return
+
+    if not ALERT_ROLE_ID:
         return
 
     guild = bot.get_guild(payload.guild_id)
     if guild is None:
         return
 
-    emoji_str = str(payload.emoji)
-    key = (payload.message_id, payload.user_id)
-
-    # --------------------------------------------------------
-    # 1) Track reactions for combo detection
-    # --------------------------------------------------------
-    if key not in reactions_on_message:
-        reactions_on_message[key] = set()
-    reactions_on_message[key].add(emoji_str)
-
-    # --------------------------------------------------------
-    # 2) Moderation: check forbidden combos
-    # --------------------------------------------------------
-    for combo in FORBIDDEN_COMBOS:
-        if combo.issubset(reactions_on_message[key]):
-            # User has used all emojis in this combo on this message
-            member = guild.get_member(payload.user_id)
-            if member is None:
-                try:
-                    member = await guild.fetch_member(payload.user_id)
-                except discord.NotFound:
-                    return
-
-            # Cooldown: avoid punishing multiple times within 10 seconds
-            now = datetime.utcnow()
-            last = last_punished_at.get(member.id)
-            if last and (now - last).total_seconds() < 10:
-                # Within cooldown; do not punish again
-                print(f"Skipping punishment for {member} due to cooldown.")
-                break
-
-            # Escalate offense count
-            count = offense_counts.get(member.id, 0) + 1
-            offense_counts[member.id] = count
-            last_punished_at[member.id] = now
-
-            index = min(count - 1, len(OFFENSE_TIMEOUTS) - 1)
-            minutes = OFFENSE_TIMEOUTS[index]
-
-            try:
-                await member.timeout(
-                    timedelta(minutes=minutes),
-                    reason=f"Forbidden emoji combo detected: {combo} (offense {count})",
-                )
-                print(f"Timed out {member} for {minutes} minute(s) (combo offense {count}).")
-            except Exception as e:
-                print(f"Failed to timeout {member}: {e}")
-
-            # Optional: remove all their reactions from this message
-            channel = guild.get_channel(payload.channel_id)
-            if channel is not None:
-                try:
-                    msg = await channel.fetch_message(payload.message_id)
-                    for reaction in msg.reactions:
-                        async for user in reaction.users():
-                            if user.id == member.id:
-                                await reaction.remove(user)
-                except Exception:
-                    pass
-
-            # Log to moderation channel
-            await log_timeout_action(
-                guild=guild,
-                member=member,
-                minutes=minutes,
-                count=count,
-                combo=combo,
-                channel_id=payload.channel_id,
-                message_id=payload.message_id,
-            )
-
-            # Clear stored reactions for this (message, user) to avoid repeated triggers
-            reactions_on_message[key].clear()
-
-            break  # Stop checking combos
-
-    # --------------------------------------------------------
-    # 3) Opt-in Alert Role: ✅ on opt-in message
-    # --------------------------------------------------------
-    if emoji_str != "✅":
-        return
-
-    if not ALERT_ROLE_ID:
-        return
-
     role = guild.get_role(int(ALERT_ROLE_ID))
     if role is None:
-        print(f"Could not find alert role with ID {ALERT_ROLE_ID}")
         return
 
+    # Fetch the member
     member = guild.get_member(payload.user_id)
     if member is None:
         try:
@@ -455,6 +258,7 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
         except discord.NotFound:
             return
 
+    # Fetch the message to ensure it's one of our opt-in messages
     channel = guild.get_channel(payload.channel_id)
     if channel is None:
         return
@@ -464,20 +268,18 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     except discord.NotFound:
         return
 
-    # Only handle messages sent by this bot
+    # Only react to messages sent by this bot and (optionally) with the opt-in title
     if message.author.id != bot.user.id:
         return
 
-    # Only act on your opt-in embed
+    # Optional: check embed title to be extra safe
     if message.embeds:
-        title = message.embeds[0].title or ""
-        if "Alertium Notifications Opt-in" not in title:
+        if message.embeds[0].title != "Alertium Notifications Opt-in":
             return
 
+    # Finally, add the role if the user doesn't have it
     if role not in member.roles:
         await member.add_roles(role, reason="Opted into Alertium notifications via reaction")
-        print(f"Assigned alert role to {member}.")
-
 
 
 @bot.event
@@ -551,20 +353,6 @@ async def status(ctx):
         "Alertium is online.\n"
     )
     await ctx.send(message)
-
-@bot.command()
-@commands.has_permissions(manage_guild=True)
-async def offenses(ctx, member: discord.Member | None = None):
-    """
-    Show how many reaction offenses a user has.
-    If no user is provided, show for yourself.
-    """
-    if member is None:
-        member = ctx.author
-
-    count = offense_counts.get(member.id, 0)
-    await ctx.send(f"{member.mention} has **{count}** recorded reaction offense(s).")
-
 
 @bot.command()
 @commands.has_permissions(manage_roles=True)

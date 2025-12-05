@@ -170,7 +170,16 @@ async def on_ready():
     # Startup message
     channel = bot.get_channel(TARGET_CHANNEL_ID)
     if channel:
-        await channel.send("Alertium is now online.")
+        embed = Embed(
+            title="Alertium is now online",
+            description=(
+                "Monitoring Twitch **global badges** for new releases.\n"
+                "Prefix: `>/`  |  Try: `>/status`"
+            ),
+            color=0x7A3CEB,
+        )
+        await channel.send(embed=embed)
+
     print("Alertium is running")
 
 

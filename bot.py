@@ -16,6 +16,9 @@ TWITCH_APP_ACCESS_TOKEN = os.getenv("TWITCH_ACCESS_TOKEN")
 
 SNAPSHOT_FILE = "badges_snapshot.json"  # Local storage of known badges
 
+if not TWITCH_CLIENT_ID or not TWITCH_APP_ACCESS_TOKEN:
+    raise RuntimeError("Missing TWITCH_CLIENT_ID or TWITCH_ACCESS_TOKEN environment variables.")
+
 
 # ============================================================
 # DISCORD BOT INITIALIZATION
@@ -221,4 +224,6 @@ async def testbadge(ctx):
 # ============================================================
 
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_TOKEN")
+if not DISCORD_BOT_TOKEN:
+    raise RuntimeError("Missing DISCORD_TOKEN environment variable.")
 bot.run(DISCORD_BOT_TOKEN)

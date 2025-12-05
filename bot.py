@@ -31,7 +31,8 @@ if not TWITCH_CLIENT_ID or not TWITCH_APP_ACCESS_TOKEN:
 
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix=">/", intents=intents)
+intents.members = True
+bot = commands.Bot(command_prefix=[">/", "/"], intents=intents)
 
 # Set of all previously known badge IDs (set_id:version_id)
 known_badge_ids: set[str] = set()
@@ -225,6 +226,108 @@ async def before_loop():
 
 
 # ============================================================
+# REACTION ROLE HANDLERS
+# ============================================================
+
+@bot.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    """Give the alert role when a user reacts with ✅ on the opt-in message."""
+    # Ignore bot's own reactions
+    if payload.user_id == bot.user.id:
+        return
+
+    if str(payload.emoji) != "✅":
+        return
+
+    if not ALERT_ROLE_ID:
+        return
+
+    guild = bot.get_guild(payload.guild_id)
+    if guild is None:
+        return
+
+    role = guild.get_role(int(ALERT_ROLE_ID))
+    if role is None:
+        return
+
+    # Fetch the member
+    member = guild.get_member(payload.user_id)
+    if member is None:
+        try:
+            member = await guild.fetch_member(payload.user_id)
+        except discord.NotFound:
+            return
+
+    # Fetch the message to ensure it's one of our opt-in messages
+    channel = guild.get_channel(payload.channel_id)
+    if channel is None:
+        return
+
+    try:
+        message = await channel.fetch_message(payload.message_id)
+    except discord.NotFound:
+        return
+
+    # Only react to messages sent by this bot and (optionally) with the opt-in title
+    if message.author.id != bot.user.id:
+        return
+
+    # Optional: check embed title to be extra safe
+    if message.embeds:
+        if message.embeds[0].title != "Alertium Notifications Opt-in":
+            return
+
+    # Finally, add the role if the user doesn't have it
+    if role not in member.roles:
+        await member.add_roles(role, reason="Opted into Alertium notifications via reaction")
+
+
+@bot.event
+async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
+    """Remove the alert role when a user removes ✅ from the opt-in message."""
+    if not ALERT_ROLE_ID:
+        return
+
+    if str(payload.emoji) != "✅":
+        return
+
+    guild = bot.get_guild(payload.guild_id)
+    if guild is None:
+        return
+
+    role = guild.get_role(int(ALERT_ROLE_ID))
+    if role is None:
+        return
+
+    member = guild.get_member(payload.user_id)
+    if member is None:
+        try:
+            member = await guild.fetch_member(payload.user_id)
+        except discord.NotFound:
+            return
+
+    channel = guild.get_channel(payload.channel_id)
+    if channel is None:
+        return
+
+    try:
+        message = await channel.fetch_message(payload.message_id)
+    except discord.NotFound:
+        return
+
+    if message.author.id != bot.user.id:
+        return
+
+    if message.embeds:
+        if message.embeds[0].title != "Alertium Notifications Opt-in":
+            return
+
+    if role in member.roles:
+        await member.remove_roles(role, reason="Opted out of Alertium notifications via reaction")
+
+
+
+# ============================================================
 # OPTIONAL MANUAL COMMANDS
 # ============================================================
 
@@ -250,6 +353,32 @@ async def status(ctx):
         "Alertium is online.\n"
     )
     await ctx.send(message)
+
+@bot.command()
+@commands.has_permissions(manage_roles=True)
+async def setup_alert_role(ctx):
+    """
+    Post the opt-in message so users can react to get the alert role.
+    Run this in the channel where you want people to subscribe.
+    """
+    if not ALERT_ROLE_ID:
+        await ctx.send("ALERT_ROLE_ID is not configured in the environment.")
+        return
+
+    description = (
+        "React with ✅ to receive the @AlertiumMe role.\n"
+        "You will be pinged whenever a new Twitch global badge is detected."
+    )
+
+    embed = Embed(
+        title="Alertium Notifications Opt-in",
+        description=description,
+        color=0x7A3CEB,
+    )
+
+    msg = await ctx.send(embed=embed)
+    await msg.add_reaction("✅")
+
 
 @bot.command()
 async def simulate_new(ctx):

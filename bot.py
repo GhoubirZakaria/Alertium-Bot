@@ -237,9 +237,6 @@ async def testbadge(ctx):
 
 @bot.command()
 async def simulate_new(ctx):
-    """
-    Simulate the detection of a new global badge.
-    """
     global known_badge_ids
 
     fake_id = "simulated_set:simulated_version_" + str(len(known_badge_ids) + 1)
@@ -254,16 +251,14 @@ async def simulate_new(ctx):
     save_snapshot(known_badge_ids)
 
     embed = discord.Embed(
-        title=fake_badge["name"],
-        description=f"ID: {fake_badge['id']}\nType: {fake_badge['type']}",
-        color=0x00ff00,
+        title="Simulated Test Badge",
+        description=f"**Name:** Simulated Test Badge\n**Type:** Global",
+        color=0x7A3CEB,
     )
 
-    # Attach the file
     file = discord.File("ali.png", filename="ali.png")
 
-    # Point the embed to the attached image
-    embed.set_image(url="attachment://ali.png")
+    embed.set_thumbnail(url="attachment://ali.png")
 
     if ALERT_ROLE_ID:
         mention = f"<@&{ALERT_ROLE_ID}>"

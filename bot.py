@@ -223,7 +223,7 @@ async def before_loop():
 async def ping(ctx):
     await ctx.send("7ader")
 
-
+@bot.command()
 async def testbadge(ctx):
     """Manually fetch the latest badge and display it (for testing)."""
     badges = await fetch_global_badges()
@@ -234,7 +234,7 @@ async def testbadge(ctx):
     embed = build_badge_embed(badges[-1])
     await ctx.send(embed=embed)
 
-
+@bot.command()
 async def status(ctx):
     """Check if Alertium is online."""
     message = (
@@ -243,7 +243,7 @@ async def status(ctx):
     )
     await ctx.send(message)
 
-
+@bot.command()
 async def simulate_new(ctx):
     global known_badge_ids
 

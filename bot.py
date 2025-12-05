@@ -9,7 +9,10 @@ import os
 # CONFIGURATION
 # ============================================================
 
-TARGET_CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID")
+DISCORD_CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID")
+if not DISCORD_CHANNEL_ID:
+    raise RuntimeError("Missing DISCORD_CHANNEL_ID environment variable.")
+TARGET_CHANNEL_ID = int(DISCORD_CHANNEL_ID)
 
 TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID")
 TWITCH_APP_ACCESS_TOKEN = os.getenv("TWITCH_ACCESS_TOKEN")

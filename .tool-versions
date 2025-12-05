@@ -1,0 +1,4 @@
+python 3.12.6
+git add .tool-versions
+git commit -m "Pin Python version to 3.12.6 for Railway"
+git push

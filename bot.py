@@ -9,10 +9,12 @@ import os
 # CONFIGURATION
 # ============================================================
 
-TARGET_CHANNEL_ID = 1313956150936604795
+TARGET_CHANNEL_ID = DISCORD_CHANNEL_ID
 
 TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID")
 TWITCH_APP_ACCESS_TOKEN = os.getenv("TWITCH_ACCESS_TOKEN")
+
+ALERT_ROLE_ID = os.getenv("ALERT_ROLE_ID")
 
 SNAPSHOT_FILE = "badges_snapshot.json"
 
@@ -187,7 +189,11 @@ async def check_for_badges():
         for badge in badges:
             if badge["id"] in new_badges:
                 embed = build_badge_embed(badge)
-                await channel.send(embed=embed)
+                if ALERT_ROLE_ID:
+                    mention = f"<@&{ALERT_ROLE_ID}>"
+                    await channel.send(content=mention, embed=embed)
+                else:
+                    await channel.send(embed=embed)
 
     # Update snapshot
     known_badge_ids = current_ids
@@ -218,6 +224,33 @@ async def testbadge(ctx):
 
     embed = build_badge_embed(badges[-1])
     await ctx.send(embed=embed)
+
+@bot.command()
+async def simulate_new(ctx):
+    """
+    Simulate the detection of a new global badge.
+    """
+    global known_badge_ids
+
+    fake_id = "simulated_set:simulated_version_" + str(len(known_badge_ids) + 1)
+
+    fake_badge = {
+        "id": fake_id,
+        "name": "Simulated Test Badge",
+        "type": "Global",
+        "image_url": None,
+    }
+
+    known_badge_ids.add(fake_id)
+    save_snapshot(known_badge_ids)
+
+    embed = build_badge_embed(fake_badge)
+
+    if ALERT_ROLE_ID:
+        mention = f"<@&{ALERT_ROLE_ID}>"
+        await ctx.send(content=mention, embed=embed)
+    else:
+        await ctx.send(embed=embed)
 
 # ============================================================
 # BOT LAUNCH

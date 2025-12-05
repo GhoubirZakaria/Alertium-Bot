@@ -239,7 +239,6 @@ async def status(ctx):
     """Check if Alertium is online."""
     message = (
         "Alertium is online.\n"
-        "Prefix commands start with `>/`."
     )
     await ctx.send(message)
 

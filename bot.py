@@ -14,7 +14,7 @@ TARGET_CHANNEL_ID = 1313956150936604795
 TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID")
 TWITCH_APP_ACCESS_TOKEN = os.getenv("TWITCH_ACCESS_TOKEN")
 
-SNAPSHOT_FILE = "badges_snapshot.json"  # Local storage of known badges
+SNAPSHOT_FILE = "badges_snapshot.json"
 
 if not TWITCH_CLIENT_ID or not TWITCH_APP_ACCESS_TOKEN:
     raise RuntimeError("Missing TWITCH_CLIENT_ID or TWITCH_ACCESS_TOKEN environment variables.")

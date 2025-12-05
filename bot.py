@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands, tasks
-from discord import Embed
+from discord import Embed, app_commands
 import aiohttp
 import json
 import os
@@ -160,6 +160,13 @@ async def on_ready():
     if not check_for_badges.is_running():
         check_for_badges.start()
 
+    # Set presence to show prefix
+    activity = discord.Activity(
+        type=discord.ActivityType.watching,
+        name="{>/} – command prefix",
+    )
+    await bot.change_presence(status=discord.Status.online, activity=activity)
+
     # Startup message
     channel = bot.get_channel(TARGET_CHANNEL_ID)
     if channel:
@@ -241,20 +248,41 @@ async def simulate_new(ctx):
         "id": fake_id,
         "name": "Simulated Test Badge",
         "type": "Global",
-        "image_url": None,
     }
 
     known_badge_ids.add(fake_id)
     save_snapshot(known_badge_ids)
 
-    embed = build_badge_embed(fake_badge)
+    embed = discord.Embed(
+        title=fake_badge["name"],
+        description=f"ID: {fake_badge['id']}\nType: {fake_badge['type']}",
+        color=0x00ff00,
+    )
+
+    # Attach the file
+    file = discord.File("ali.png", filename="ali.png")
+
+    # Point the embed to the attached image
+    embed.set_image(url="attachment://ali.png")
 
     if ALERT_ROLE_ID:
         mention = f"<@&{ALERT_ROLE_ID}>"
-        await ctx.send(content=mention, embed=embed)
+        await ctx.send(content=mention, embed=embed, file=file)
     else:
-        await ctx.send(embed=embed)
+        await ctx.send(embed=embed, file=file)
+        
+# ============================================================
+# SLASH COMMANDS {>/}
+# ============================================================
 
+@bot.tree.command(name="status", description="Check if Alertium is online and running.")
+async def status_command(interaction: discord.Interaction):
+    message = (
+        "Alertium is online and monitoring Twitch global badges.\n"
+        "Prefix commands start with `>/`."
+    )
+    await interaction.response.send_message(message, ephemeral=True)
+    
 # ============================================================
 # BOT LAUNCH
 # ============================================================

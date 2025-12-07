@@ -188,7 +188,7 @@ async def on_ready():
 # PERIODIC BADGE CHECKING
 # ============================================================
 
-@tasks.loop(seconds=30)  # Change to 1 during testing
+@tasks.loop(seconds=10)  # Change to 1 during testing
 async def check_for_badges():
     """Compare Twitch badge list with local snapshot and detect new entries."""
     global known_badge_ids

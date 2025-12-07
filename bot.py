@@ -231,12 +231,14 @@ async def before_loop():
 
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    """Give the alert role when a user reacts with ✅ on the opt-in message."""
+    """
+    Handle reactions on the opt-in message:
+    - Only ✅ is allowed.
+    - Any other reaction is removed.
+    - ✅ grants the alert role once.
+    """
     # Ignore bot's own reactions
     if payload.user_id == bot.user.id:
-        return
-
-    if str(payload.emoji) != "✅":
         return
 
     if not ALERT_ROLE_ID:
@@ -246,19 +248,6 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     if guild is None:
         return
 
-    role = guild.get_role(int(ALERT_ROLE_ID))
-    if role is None:
-        return
-
-    # Fetch the member
-    member = guild.get_member(payload.user_id)
-    if member is None:
-        try:
-            member = await guild.fetch_member(payload.user_id)
-        except discord.NotFound:
-            return
-
-    # Fetch the message to ensure it's one of our opt-in messages
     channel = guild.get_channel(payload.channel_id)
     if channel is None:
         return
@@ -268,18 +257,47 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     except discord.NotFound:
         return
 
-    # Only react to messages sent by this bot and (optionally) with the opt-in title
+    # Only handle messages sent by this bot
     if message.author.id != bot.user.id:
         return
 
-    # Optional: check embed title to be extra safe
-    if message.embeds:
-        if message.embeds[0].title != "Alertium Notifications Opt-in":
+    # Only act on your opt-in embed
+    if not message.embeds:
+        return
+
+    title = message.embeds[0].title or ""
+    if title != "Alertium Notifications Opt-in":
+        return
+
+    # At this point we know: this is the opt-in message
+    emoji_str = str(payload.emoji)
+
+    member = guild.get_member(payload.user_id)
+    if member is None:
+        try:
+            member = await guild.fetch_member(payload.user_id)
+        except discord.NotFound:
             return
 
-    # Finally, add the role if the user doesn't have it
+    # If the emoji is NOT ✅ → remove it and stop
+    if emoji_str != "✅":
+        try:
+            await message.remove_reaction(payload.emoji, member)
+            print(f"Removed non-✅ reaction from {member} on opt-in message.")
+        except Exception as e:
+            print(f"Failed to remove reaction: {e}")
+        return
+
+    # Emoji IS ✅ → give the alert role
+    role = guild.get_role(int(ALERT_ROLE_ID))
+    if role is None:
+        print(f"Could not find alert role with ID {ALERT_ROLE_ID}")
+        return
+
     if role not in member.roles:
         await member.add_roles(role, reason="Opted into Alertium notifications via reaction")
+        print(f"Assigned alert role to {member}.")
+
 
 
 @bot.event

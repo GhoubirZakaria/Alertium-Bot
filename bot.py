@@ -191,7 +191,7 @@ async def on_message(message: discord.Message):
 
     # Check if the bot was mentioned
     if bot.user in message.mentions:
-        await message.channel.send(f"{message.author.mention} Alertium reporting for duty. Type `>/status` for info.")
+        await message.channel.send(f"{message.author.mention} 9awed")
 
     # Allow normal commands to function
     await bot.process_commands(message)

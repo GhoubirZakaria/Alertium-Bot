@@ -24,7 +24,7 @@ mention_counts: dict[int, int] = {}
 # ============================================================
 # CONFIGURATION
 # ============================================================
-
+OWNER_ID = os.getenv("OWNER_ID")
 DISCORD_CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID")
 if not DISCORD_CHANNEL_ID:
     raise RuntimeError("Missing DISCORD_CHANNEL_ID environment variable.")
@@ -205,24 +205,33 @@ async def on_message(message: discord.Message):
     if message.author == bot.user:
         return
 
-    # Check if the bot was mentioned
+    # If bot is mentioned
     if bot.user in message.mentions:
         user_id = message.author.id
+        content = message.content.lower()
 
-        # Current count for this user (default 0)
+        # ------------------------------
+        # SPECIAL CASE: You mention bot
+        # ------------------------------
+        if user_id == OWNER_ID and "mal hada" in content:
+            await message.channel.send(f"{message.author.mention} khas li ygadha lih")
+            await bot.process_commands(message)
+            return
+
+        # ------------------------------
+        # NORMAL ROTATING RESPONSES
+        # ------------------------------
         current_count = mention_counts.get(user_id, 0)
-
-        # Pick reply based on count (loop over length of MENTION_REPLIES)
         index = current_count % len(MENTION_REPLIES)
         reply_text = MENTION_REPLIES[index]
 
-        # Increment count for next time
         mention_counts[user_id] = current_count + 1
 
         await message.channel.send(f"{message.author.mention} {reply_text}")
 
-    # Allow normal commands to function
+    # Allow prefix commands to still work
     await bot.process_commands(message)
+
 
 
 # ============================================================

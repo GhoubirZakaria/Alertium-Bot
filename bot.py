@@ -5,6 +5,22 @@ import aiohttp
 import json
 import os
 
+
+# ============================================================
+# MENTION REPLY CONFIG
+# ============================================================
+
+MENTION_REPLIES = [
+    "tagi mok",
+    "chi qalwa?",   
+    "nod liya men fogo"
+    "T9awed",
+]
+
+# Track how many times each user mentioned the bot
+mention_counts: dict[int, int] = {}
+
+
 # ============================================================
 # CONFIGURATION
 # ============================================================
@@ -191,10 +207,23 @@ async def on_message(message: discord.Message):
 
     # Check if the bot was mentioned
     if bot.user in message.mentions:
-        await message.channel.send(f"{message.author.mention} tagi mok")
+        user_id = message.author.id
+
+        # Current count for this user (default 0)
+        current_count = mention_counts.get(user_id, 0)
+
+        # Pick reply based on count (loop over length of MENTION_REPLIES)
+        index = current_count % len(MENTION_REPLIES)
+        reply_text = MENTION_REPLIES[index]
+
+        # Increment count for next time
+        mention_counts[user_id] = current_count + 1
+
+        await message.channel.send(f"{message.author.mention} {reply_text}")
 
     # Allow normal commands to function
     await bot.process_commands(message)
+
 
 # ============================================================
 # PERIODIC BADGE CHECKING

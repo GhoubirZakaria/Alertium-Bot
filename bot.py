@@ -183,6 +183,18 @@ async def on_ready():
 
     print("Alertium is running")
 
+@bot.event
+async def on_message(message: discord.Message):
+    # Ignore messages sent by the bot itself
+    if message.author == bot.user:
+        return
+
+    # Check if the bot was mentioned
+    if bot.user in message.mentions:
+        await message.channel.send(f"{message.author.mention} Alertium reporting for duty. Type `>/status` for info.")
+
+    # Allow normal commands to function
+    await bot.process_commands(message)
 
 # ============================================================
 # PERIODIC BADGE CHECKING

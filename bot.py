@@ -13,7 +13,7 @@ import os
 MENTION_REPLIES = [
     "tagi mok",
     "chi qalwa?",   
-    "nod liya men fogo"
+    "nod liya men fogo",
     "T9awed",
 ]
 

@@ -117,6 +117,7 @@ async def fetch_global_badges():
         for version in badge_set.get("versions", []):
             badge_id = f"{set_id}:{version.get('id', 'unknown')}"
             badge_name = version.get("title") or version.get("description") or "Unnamed Badge"
+            badge_desc = version.get("description")
             image = (
                 version.get("image_url_4x")
                 or version.get("image_url_2x")
@@ -127,6 +128,7 @@ async def fetch_global_badges():
                 {
                     "id": badge_id,
                     "name": badge_name,
+                    "description": badge_desc,
                     "type": "Global",
                     "image_url": image,
                 }
@@ -140,11 +142,16 @@ async def fetch_global_badges():
 # ============================================================
 
 def build_badge_embed(badge: dict) -> Embed:
+    desc_line = ""
+    if badge.get("description"):
+        desc_line = f"\n**Description:** {badge['description']}"
+
     embed = Embed(
         title="New TTV Global Badge Detected",
         description=(
             f"**Name:** {badge['name']}\n"
             f"**Type:** {badge['type']}"
+            f"{desc_line}"
         ),
         color=0x7A3CEB
     )
@@ -152,7 +159,6 @@ def build_badge_embed(badge: dict) -> Embed:
     if badge.get("image_url"):
         embed.set_thumbnail(url=badge["image_url"])
 
-    embed.set_footer(text="")  # You can fill this later with a URL or signature
     return embed
 
 

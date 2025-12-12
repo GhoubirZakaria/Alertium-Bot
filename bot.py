@@ -4,6 +4,7 @@ from discord import Embed, app_commands
 import aiohttp
 import json
 import os
+import asyncpg
 
 
 # ============================================================
@@ -24,7 +25,14 @@ mention_counts: dict[int, int] = {}
 # ============================================================
 # CONFIGURATION
 # ============================================================
-OWNER_ID = os.getenv("OWNER_ID")
+## postgres DB save snapshot
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("Missing DATABASE_URL (Railway Postgres).")
+
+
+# OWNER_ID = os.getenv("OWNER_ID")
+OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 DISCORD_CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID")
 if not DISCORD_CHANNEL_ID:
     raise RuntimeError("Missing DISCORD_CHANNEL_ID environment variable.")
@@ -35,7 +43,7 @@ TWITCH_APP_ACCESS_TOKEN = os.getenv("TWITCH_ACCESS_TOKEN")
 
 ALERT_ROLE_ID = os.getenv("ALERT_ROLE_ID")
 
-SNAPSHOT_FILE = "badges_snapshot.json"
+# SNAPSHOT_FILE = "badges_snapshot.json"
 
 if not TWITCH_CLIENT_ID or not TWITCH_APP_ACCESS_TOKEN:
     raise RuntimeError("Missing TWITCH_CLIENT_ID or TWITCH_ACCESS_TOKEN environment variables.")
@@ -54,31 +62,60 @@ bot = commands.Bot(command_prefix=[">/", "/"], intents=intents)
 known_badge_ids: set[str] = set()
 
 
+# # ============================================================
+# # SNAPSHOT DATABASE FUNCTIONS
+# # ============================================================
+
+# def load_snapshot() -> set[str]:
+#     """Load previously known badge IDs from JSON file."""
+#     if not os.path.exists(SNAPSHOT_FILE):
+#         return set()
+
+#     try:
+#         with open(SNAPSHOT_FILE, "r", encoding="utf-8") as f:
+#             data = json.load(f)
+#         return set(data.get("badge_ids", []))
+#     except Exception:
+#         return set()
+
+
+# def save_snapshot(ids: set[str]) -> None:
+#     """Save known badge IDs to JSON file."""
+#     payload = {"badge_ids": sorted(list(ids))}
+#     try:
+#         with open(SNAPSHOT_FILE, "w", encoding="utf-8") as f:
+#             json.dump(payload, f, indent=2)
+#     except Exception:
+#         pass
+
 # ============================================================
-# SNAPSHOT DATABASE FUNCTIONS
+# SNAPSHOT DATABASE (Postgres) FUNCTIONS
 # ============================================================
 
-def load_snapshot() -> set[str]:
-    """Load previously known badge IDs from JSON file."""
-    if not os.path.exists(SNAPSHOT_FILE):
-        return set()
+async def db_init():
+    conn = await asyncpg.connect(DATABASE_URL)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS twitch_badges_seen (
+            badge_id TEXT PRIMARY KEY
+        );
+    """)
+    await conn.close()
 
-    try:
-        with open(SNAPSHOT_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return set(data.get("badge_ids", []))
-    except Exception:
-        return set()
+async def db_get_seen_ids() -> set[str]:
+    conn = await asyncpg.connect(DATABASE_URL)
+    rows = await conn.fetch("SELECT badge_id FROM twitch_badges_seen;")
+    await conn.close()
+    return {r["badge_id"] for r in rows}
 
-
-def save_snapshot(ids: set[str]) -> None:
-    """Save known badge IDs to JSON file."""
-    payload = {"badge_ids": sorted(list(ids))}
-    try:
-        with open(SNAPSHOT_FILE, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
-    except Exception:
-        pass
+async def db_mark_seen(ids: set[str]) -> None:
+    if not ids:
+        return
+    conn = await asyncpg.connect(DATABASE_URL)
+    await conn.executemany(
+        "INSERT INTO twitch_badges_seen (badge_id) VALUES ($1) ON CONFLICT DO NOTHING;",
+        [(i,) for i in ids]
+    )
+    await conn.close()
 
 
 # ============================================================
@@ -166,31 +203,70 @@ def build_badge_embed(badge: dict) -> Embed:
 # DISCORD BOT EVENTS
 # ============================================================
 
+# @bot.event
+# async def on_ready():
+#     global known_badge_ids
+
+#     # Load previously known badges
+#     known_badge_ids = load_snapshot()
+
+#     # If first run → initialize database with current Twitch badges
+#     if not known_badge_ids:
+#         current = await fetch_global_badges()
+#         known_badge_ids = {b["id"] for b in current}
+#         save_snapshot(known_badge_ids)
+
+#     # Start periodic checks
+#     if not check_for_badges.is_running():
+#         check_for_badges.start()
+
+#     # Set presence to show prefix
+#     activity = discord.Activity(
+#         type=discord.ActivityType.watching,
+#         name="{>/} – command prefix",
+#     )
+#     await bot.change_presence(status=discord.Status.online, activity=activity)
+
+#     # Startup message
+#     channel = bot.get_channel(TARGET_CHANNEL_ID)
+#     if channel:
+#         embed = Embed(
+#             title="Alertium is now online",
+#             description=(
+#                 "Monitoring Twitch **global badges** for new releases.\n"
+#                 "Prefix: `>/`  |  Try: `>/status`"
+#             ),
+#             color=0x7A3CEB,
+#         )
+#         await channel.send(embed=embed)
+
+#     print("Alertium is running")
+
+#---------------------------Postgres(rootVer UP)--------
 @bot.event
 async def on_ready():
     global known_badge_ids
 
-    # Load previously known badges
-    known_badge_ids = load_snapshot()
+    await db_init()
 
-    # If first run → initialize database with current Twitch badges
+    # Load previously known badges from DB
+    known_badge_ids = await db_get_seen_ids()
+
+    # If first run (DB empty) → initialize DB with current Twitch badges
     if not known_badge_ids:
         current = await fetch_global_badges()
         known_badge_ids = {b["id"] for b in current}
-        save_snapshot(known_badge_ids)
+        await db_mark_seen(known_badge_ids)
 
-    # Start periodic checks
     if not check_for_badges.is_running():
         check_for_badges.start()
 
-    # Set presence to show prefix
     activity = discord.Activity(
         type=discord.ActivityType.watching,
         name="{>/} – command prefix",
     )
     await bot.change_presence(status=discord.Status.online, activity=activity)
 
-    # Startup message
     channel = bot.get_channel(TARGET_CHANNEL_ID)
     if channel:
         embed = Embed(
@@ -204,6 +280,13 @@ async def on_ready():
         await channel.send(embed=embed)
 
     print("Alertium is running")
+    try:
+        await bot.tree.sync()
+        print("Slash commands synced")
+    except Exception as e:
+        print(f"Slash sync failed: {e}")
+
+
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -272,8 +355,16 @@ async def check_for_badges():
                     await channel.send(embed=embed)
 
     # Update snapshot
+    # known_badge_ids = current_ids
+    # save_snapshot(known_badge_ids)
+#----------------------------------------------------
+    
+    # Save new badges to DB so they persist across restarts
+    await db_mark_seen(new_badges)
+    
+    # Update in-memory cache
     known_badge_ids = current_ids
-    save_snapshot(known_badge_ids)
+
 
 
 @check_for_badges.before_loop
@@ -467,7 +558,8 @@ async def simulate_new(ctx):
     }
 
     known_badge_ids.add(fake_id)
-    save_snapshot(known_badge_ids)
+    # save_snapshot(known_badge_ids)
+    await db_mark_seen({fake_id})
 
     embed = discord.Embed(
         title="Simulated Test Badge",

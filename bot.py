@@ -8,21 +8,6 @@ import asyncpg
 
 
 # ============================================================
-# MENTION REPLY CONFIG
-# ============================================================
-
-MENTION_REPLIES = [
-    "tagi mok",
-    "chi qalwa?",   
-    "nod liya men fogo",
-    "T9awed",
-]
-
-# Track how many times each user mentioned the bot
-mention_counts: dict[int, int] = {}
-
-
-# ============================================================
 # CONFIGURATION
 # ============================================================
 ## postgres DB save snapshot
@@ -588,6 +573,22 @@ async def status_command(interaction: discord.Interaction):
         "Prefix commands start with `>/`."
     )
     await interaction.response.send_message(message, ephemeral=True)
+
+
+# ============================================================
+# MENTION REPLY CONFIG
+# ============================================================
+
+MENTION_REPLIES = [
+    "tagi mok",
+    "chi qalwa?",   
+    "nod liya men fogo",
+    "T9awed",
+]
+
+# Track how many times each user mentioned the bot
+mention_counts: dict[int, int] = {}
+
     
 # ============================================================
 # BOT LAUNCH
